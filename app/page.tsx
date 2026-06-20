@@ -5,6 +5,7 @@ import Journey from "@/components/Journey";
 import Skills from "@/components/Skills";
 import Contact from "@/components/Contact";
 import Footer from "@/components/Footer";
+import DigitalTwin from "@/components/DigitalTwin";
 
 export default function Home() {
   return (
@@ -21,6 +22,7 @@ export default function Home() {
         </div>
       </main>
       <Footer />
+      <DigitalTwin />
     </>
   );
 }
