@@ -1,5 +1,6 @@
 "use client";
 
+import Image from "next/image";
 import { motion } from "framer-motion";
 
 const stats = [
@@ -99,12 +100,14 @@ export default function Hero() {
           className="relative mx-auto w-full max-w-sm lg:mx-0"
         >
           <div className="absolute -inset-3 rounded-[2rem] bg-gradient-to-tr from-electric-cyan/30 via-electric-blue/20 to-electric-violet/30 blur-2xl" />
-          <div className="relative overflow-hidden rounded-[1.5rem] border border-white/10 bg-ink-700">
-            {/* eslint-disable-next-line @next/next/no-img-element */}
-            <img
+          <div className="relative aspect-[4/5] w-full overflow-hidden rounded-[1.5rem] border border-white/10 bg-ink-700">
+            <Image
               src="/phong.jpeg"
               alt="Phong Trinh"
-              className="h-full w-full object-cover [aspect-ratio:4/5]"
+              fill
+              priority
+              sizes="(max-width: 1024px) 100vw, 400px"
+              className="object-cover"
             />
             <div className="absolute inset-0 bg-gradient-to-t from-ink via-transparent to-transparent opacity-70" />
             <div className="absolute inset-x-0 bottom-0 flex items-center justify-between p-5 font-mono text-xs">

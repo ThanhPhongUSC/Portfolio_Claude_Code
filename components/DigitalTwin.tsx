@@ -3,7 +3,7 @@
 import { useEffect, useRef, useState } from "react";
 import { AnimatePresence, motion } from "framer-motion";
 
-type Msg = { role: "user" | "assistant"; content: string };
+type Msg = { id: string; role: "user" | "assistant"; content: string };
 
 const SUGGESTIONS = [
   "How did you get into software engineering?",
@@ -12,6 +12,14 @@ const SUGGESTIONS = [
   "Tell me about a project you're proud of.",
 ];
 
+// How long to wait before giving up on a stalled response.
+const RESPONSE_TIMEOUT_MS = 30_000;
+
+const uid = () =>
+  typeof crypto !== "undefined" && "randomUUID" in crypto
+    ? crypto.randomUUID()
+    : Math.random().toString(36).slice(2);
+
 export default function DigitalTwin() {
   const [open, setOpen] = useState(false);
   const [messages, setMessages] = useState<Msg[]>([]);
@@ -19,6 +27,15 @@ export default function DigitalTwin() {
   const [streaming, setStreaming] = useState(false);
   const scrollRef = useRef<HTMLDivElement>(null);
   const inputRef = useRef<HTMLInputElement>(null);
+  // Lets us cancel the in-flight request (stop button / timeout).
+  const abortRef = useRef<AbortController | null>(null);
+  // Tracks WHY a request was aborted so we can show the right message.
+  const stopReasonRef = useRef<"user" | "timeout" | null>(null);
+
+  function stop() {
+    stopReasonRef.current = "user";
+    abortRef.current?.abort();
+  }
 
   useEffect(() => {
     scrollRef.current?.scrollTo({
@@ -35,16 +52,36 @@ export default function DigitalTwin() {
     const trimmed = text.trim();
     if (!trimmed || streaming) return;
 
-    const next: Msg[] = [...messages, { role: "user", content: trimmed }];
-    setMessages([...next, { role: "assistant", content: "" }]);
+    const next: Msg[] = [
+      ...messages,
+      { id: uid(), role: "user", content: trimmed },
+    ];
+    const assistantId = uid();
+    setMessages([...next, { id: assistantId, role: "assistant", content: "" }]);
     setInput("");
     setStreaming(true);
 
+    // (a) cancellable request + (b) auto-abort if it stalls.
+    const controller = new AbortController();
+    abortRef.current = controller;
+    stopReasonRef.current = null;
+    const timeoutId = setTimeout(() => {
+      stopReasonRef.current = "timeout";
+      controller.abort();
+    }, RESPONSE_TIMEOUT_MS);
+
+    const setAssistant = (content: string) =>
+      setMessages([...next, { id: assistantId, role: "assistant", content }]);
+
+    let acc = "";
     try {
       const res = await fetch("/api/chat", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ messages: next }),
+        body: JSON.stringify({
+          messages: next.map((m) => ({ role: m.role, content: m.content })),
+        }),
+        signal: controller.signal,
       });
 
       if (!res.ok || !res.body) {
@@ -54,33 +91,33 @@ export default function DigitalTwin() {
 
       const reader = res.body.getReader();
       const decoder = new TextDecoder();
-      let acc = "";
       while (true) {
         const { done, value } = await reader.read();
         if (done) break;
         acc += decoder.decode(value, { stream: true });
-        setMessages([...next, { role: "assistant", content: acc }]);
+        setAssistant(acc);
       }
       if (!acc.trim()) {
-        setMessages([
-          ...next,
-          {
-            role: "assistant",
-            content:
-              "Hmm, I didn't get a response that time. Mind trying again?",
-          },
-        ]);
+        setAssistant("Hmm, I didn't get a response that time. Mind trying again?");
       }
     } catch {
-      setMessages([
-        ...next,
-        {
-          role: "assistant",
-          content:
-            "Sorry — I'm having trouble connecting right now. Please try again in a moment, or reach Phong via the contact section.",
-        },
-      ]);
+      if (controller.signal.aborted) {
+        if (stopReasonRef.current === "user") {
+          // Keep whatever streamed in before the user stopped it.
+          setAssistant(acc.trim() ? `${acc}\n\n_(stopped)_` : "_(stopped)_");
+        } else {
+          setAssistant(
+            "That took too long, so I stopped waiting. Please try again."
+          );
+        }
+      } else {
+        setAssistant(
+          "Sorry — I'm having trouble connecting right now. Please try again in a moment, or reach Phong via the contact section."
+        );
+      }
     } finally {
+      clearTimeout(timeoutId);
+      abortRef.current = null;
       setStreaming(false);
     }
   }
@@ -194,9 +231,9 @@ export default function DigitalTwin() {
                 </div>
               )}
 
-              {messages.map((m, i) => (
+              {messages.map((m) => (
                 <div
-                  key={i}
+                  key={m.id}
                   className={`flex ${
                     m.role === "user" ? "justify-end" : "justify-start"
                   }`}
@@ -237,25 +274,36 @@ export default function DigitalTwin() {
                   disabled={streaming}
                   className="flex-1 bg-transparent text-sm text-chalk placeholder:text-muted/70 focus:outline-none disabled:opacity-60"
                 />
-                <button
-                  type="submit"
-                  aria-label="Send message"
-                  disabled={streaming || !input.trim()}
-                  className="grid h-8 w-8 place-items-center rounded-full bg-electric-cyan text-ink transition-opacity disabled:opacity-30"
-                >
-                  <svg
-                    width="16"
-                    height="16"
-                    viewBox="0 0 24 24"
-                    fill="none"
-                    stroke="currentColor"
-                    strokeWidth="2.5"
-                    strokeLinecap="round"
-                    strokeLinejoin="round"
+                {streaming ? (
+                  <button
+                    type="button"
+                    aria-label="Stop generating"
+                    onClick={stop}
+                    className="grid h-8 w-8 place-items-center rounded-full bg-white/15 text-chalk transition-colors hover:bg-white/25"
                   >
-                    <path d="M22 2 11 13M22 2l-7 20-4-9-9-4 20-7Z" />
-                  </svg>
-                </button>
+                    <span className="h-2.5 w-2.5 rounded-[2px] bg-chalk" />
+                  </button>
+                ) : (
+                  <button
+                    type="submit"
+                    aria-label="Send message"
+                    disabled={!input.trim()}
+                    className="grid h-8 w-8 place-items-center rounded-full bg-electric-cyan text-ink transition-opacity disabled:opacity-30"
+                  >
+                    <svg
+                      width="16"
+                      height="16"
+                      viewBox="0 0 24 24"
+                      fill="none"
+                      stroke="currentColor"
+                      strokeWidth="2.5"
+                      strokeLinecap="round"
+                      strokeLinejoin="round"
+                    >
+                      <path d="M22 2 11 13M22 2l-7 20-4-9-9-4 20-7Z" />
+                    </svg>
+                  </button>
+                )}
               </div>
               <p className="mt-2 text-center font-mono text-[0.6rem] tracking-wider text-muted/60">
                 AI-generated · may not be perfect

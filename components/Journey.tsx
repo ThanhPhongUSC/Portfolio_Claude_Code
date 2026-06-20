@@ -1,65 +1,7 @@
 "use client";
 
 import Reveal from "./Reveal";
-
-type Milestone = {
-  period: string;
-  role: string;
-  org: string;
-  location: string;
-  body: string;
-  points?: string[];
-  tag: "engineering" | "science" | "education";
-};
-
-const milestones: Milestone[] = [
-  {
-    period: "2022 — 2025",
-    role: "Full-Stack Software Engineer",
-    org: "Remine",
-    location: "Remote, USA",
-    body: "Owned authentication and security for a multi-tenant real-estate SaaS platform.",
-    points: [
-      "Led Auth0-based authentication flows for ~650,000 users across 7 tenant organizations, sharply reducing login-related support tickets.",
-      "Shipped MFA and password rotation across the platform, strengthening security and compliance.",
-      "Delivered customizable dashboards and light/dark theming end-to-end, improving accessibility and UX.",
-      "Maintained automated tests in CI/CD and resolved production issues through root-cause analysis.",
-    ],
-    tag: "engineering",
-  },
-  {
-    period: "2021",
-    role: "Advanced Software Engineering Immersive",
-    org: "Hack Reactor",
-    location: "Boulder, CO",
-    body: "Went all-in on engineering with 1,000+ hours of full-stack development in an Agile environment — React, Node, Express, and SQL/NoSQL databases.",
-    tag: "education",
-  },
-  {
-    period: "2016 — 2018",
-    role: "Battery Engineer",
-    org: "Staq Energy",
-    location: "Louisville, CO",
-    body: "Designed and tested high-efficiency battery electrode materials, analyzing performance data to improve durability and output across cross-functional teams.",
-    tag: "science",
-  },
-  {
-    period: "2011 — 2016",
-    role: "Ph.D., Electrochemistry",
-    org: "University of Southern California",
-    location: "Los Angeles, CA",
-    body: "Led electrochemical research projects and data analysis, mentored junior researchers, and presented at scientific conferences. Co-inventor on a U.S. patent in energy storage.",
-    tag: "science",
-  },
-  {
-    period: "2010",
-    role: "B.S. Chemistry, Summa Cum Laude",
-    org: "Rowan University",
-    location: "Glassboro, NJ",
-    body: "Honors chemistry degree with a mathematics minor — where the analytical foundation started.",
-    tag: "education",
-  },
-];
+import { milestones, type Milestone } from "@/data/profile";
 
 const tagColor: Record<Milestone["tag"], string> = {
   engineering: "text-electric-cyan border-electric-cyan/40 bg-electric-cyan/10",
@@ -97,7 +39,7 @@ export default function Journey() {
 
           <ol className="space-y-10">
             {milestones.map((m, i) => (
-              <li key={m.role} className="relative pl-10 sm:pl-14">
+              <li key={m.id} className="relative pl-10 sm:pl-14">
                 <span
                   className={`absolute left-0 top-1.5 h-4 w-4 rounded-full border-2 border-ink ${dotColor[m.tag]} sm:left-1`}
                 />
@@ -127,9 +69,9 @@ export default function Journey() {
 
                     {m.points && (
                       <ul className="mt-4 space-y-2.5">
-                        {m.points.map((p) => (
+                        {m.points.map((p, pi) => (
                           <li
-                            key={p}
+                            key={`${m.id}-${pi}`}
                             className="flex gap-3 text-sm leading-relaxed text-muted/90"
                           >
                             <span className="mt-2 h-1 w-1 shrink-0 rounded-full bg-electric-cyan" />
