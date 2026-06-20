@@ -1,0 +1,9 @@
+.env
+
+Phong_Trinh_Resume_Software_Engineer.pdf
+Profile.pdf
+node_modules
+.next
+out
+dist
+npm-debug.log*
