@@ -832,6 +832,102 @@ const SYSTEM_PROMPT = buildSystemPrompt();
 array now feeds both the visible Journey timeline **and** the chatbot's knowledge,
 so they can never drift apart. Update a job once and both update together.
 
+### 6. The Skills and Contact sections now read from the data file too
+
+**Before:** the skill groups and the contact buttons were hard-coded inside
+`Skills.tsx` and `Contact.tsx`. **After:** that copy moved into `data/profile.ts`
+(`skillGroups`, `focusAreas`, `contact`, and `contactLinks`), and the components
+just map over it.
+
+```ts
+// data/profile.ts — one place to edit
+export const skillGroups = [ { title: "Frontend", blurb: "...", skills: [...] }, ... ];
+export const contactLinks = [
+  { kind: "email", href: `mailto:${contact.email}`, label: contact.email },
+  ...
+];
+```
+
+**Why it matters:** it finishes the **single source of truth** idea from #5. Your
+résumé facts — timeline, skills, and contact details — now live in exactly one
+file that feeds every section *and* the AI.
+
+### 7. The conversation survives a page refresh
+
+**Before:** reloading the page wiped the chat. **After:** messages are saved to the
+browser's `localStorage` and restored on the next visit, with a trash-can button in
+the chat header to clear them.
+
+```ts
+// Restore once after mount (so server and client markup agree — no "hydration" warning).
+useEffect(() => {
+  const raw = window.localStorage.getItem(STORAGE_KEY);
+  if (raw) setMessages(JSON.parse(raw).filter(isValidMsg));
+  setHydrated(true);
+}, []);
+
+// Save settled messages after each turn (we skip while a reply is still streaming).
+useEffect(() => {
+  if (!hydrated || streaming) return;
+  window.localStorage.setItem(STORAGE_KEY, JSON.stringify(messages.filter((m) => m.content.trim())));
+}, [messages, hydrated, streaming]);
+```
+
+**Why it matters:** the chat now feels like a real app — close the tab, come back,
+and your conversation is still there. (We restore *after* mount on purpose: reading
+`localStorage` during the first render would make the server and browser disagree
+about what to show, which React warns about as a "hydration mismatch.")
+
+### 8. The AI's replies render as real markdown
+
+**Before:** the model's `**bold**`, bullet lists, and `[links](url)` showed up as
+raw text with the asterisks visible. **After:** a tiny renderer (`components/Markdown.tsx`)
+turns them into real formatting.
+
+**Why it matters — and why we wrote our own:** the renderer builds real React
+elements and **never** uses `dangerouslySetInnerHTML`, so a model reply can't smuggle
+in `<script>` tags or other HTML. It also only allows `http(s)` and `mailto` links.
+That makes it **safe by construction** — the safest way to show text you didn't write
+yourself.
+
+### 9. Automated tests for the trickiest logic
+
+**Before:** nothing was tested automatically. **After:** the rate limiter and the
+message-validation rules are extracted into plain, testable modules under `lib/`,
+with **12 tests** (run them with `npm test`).
+
+```ts
+// lib/rateLimit.ts — the clock is injectable so tests can fast-forward time
+export function createRateLimiter({ limit, windowMs, now = Date.now }) { ... }
+```
+
+```
+$ npm test
+ ✓ lib/rateLimit.test.ts (7 tests)
+ ✓ lib/chatMessages.test.ts (5 tests)
+ Test Files  2 passed (2)
+      Tests  12 passed (12)
+```
+
+**Why it matters:** tests catch mistakes the moment you make them. Pulling the logic
+out of the route into small functions made it both **easier to test** and easier to
+read. We use [Vitest](https://vitest.dev), a fast, beginner-friendly test runner.
+
+### 10. Basic analytics and error logging
+
+**Before:** the server was silent — you couldn't see what visitors asked or when
+calls failed. **After:** `lib/logger.ts` writes one line of JSON per event
+(`request`, `completed`, `rate_limited`, `upstream_error`, …) to the server log.
+
+```json
+{"at":"2026-06-22T20:42:23Z","scope":"chat","type":"request","clientId":"…","messageCount":1,"question":"hi"}
+{"at":"2026-06-22T20:42:26Z","scope":"chat","type":"completed","clientId":"…","durationMs":3232}
+```
+
+**Why it matters:** any host (Vercel, a VPS) collects these logs, so you get free
+analytics — *what people ask, how often, and what broke* — with no third-party
+service. For privacy we log only a short, truncated preview of each question.
+
 ---
 
 ### Further ideas (a fresh self-review)
@@ -839,16 +935,15 @@ so they can never drift apart. Update a job once and both update together.
 Improvement is never "done." If you keep building, here are the next things worth
 considering:
 
-1. **Persist the conversation** so it survives a page refresh (e.g. save to the
-   browser's `localStorage`).
-2. **Render the AI's markdown** (bold, lists, links) instead of showing it as
-   plain text, using a small, safe markdown renderer.
-3. **Add automated tests** — at minimum a test for the rate limiter and the
-   message-validation logic in the API route.
-4. **Move the remaining hard-coded copy** (the Skills and Contact sections) to read
-   from `data/profile.ts` too, completing the single-source-of-truth idea.
-5. **Add basic analytics and error logging** so you can see what visitors ask and
-   catch failures in production.
+1. **Stream tokens through a typed parser** so partial markdown (a half-typed
+   `**bold`) never flickers mid-stream.
+2. **Add end-to-end tests** (e.g. Playwright) that open the chat in a real browser
+   and assert a reply renders — complementing today's unit tests.
+3. **Move rate-limit state into a shared store** (such as Upstash Redis) so the
+   limit holds across multiple servers or a serverless deployment.
+4. **Send analytics to a dashboard** (e.g. a privacy-friendly product like Plausible)
+   so trends are visible without grepping logs.
+5. **Let visitors copy or share a reply**, and add a one-click "regenerate" button.
 
 ---
 

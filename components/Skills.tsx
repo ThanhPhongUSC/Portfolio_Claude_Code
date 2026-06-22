@@ -1,44 +1,7 @@
 "use client";
 
 import Reveal from "./Reveal";
-
-const groups = [
-  {
-    title: "Frontend",
-    blurb: "Interfaces people actually enjoy using.",
-    skills: ["React", "TypeScript", "JavaScript", "HTML / CSS", "Responsive UI"],
-  },
-  {
-    title: "Backend",
-    blurb: "Reliable services and clean APIs.",
-    skills: ["Node.js", "Express", "Prisma", "REST APIs", "Auth0"],
-  },
-  {
-    title: "Data",
-    blurb: "From relational to document stores.",
-    skills: ["PostgreSQL", "MySQL", "MongoDB", "Schema design", "Query tuning"],
-  },
-  {
-    title: "Infra & Quality",
-    blurb: "Ship it, test it, keep it up.",
-    skills: ["AWS", "Docker", "CI/CD", "Jest", "Cypress", "Git"],
-  },
-];
-
-const focusAreas = [
-  {
-    title: "Authentication & Security",
-    body: "MFA, password rotation, and Auth0-based flows across multi-tenant SaaS — built for compliance and scale.",
-  },
-  {
-    title: "End-to-End Ownership",
-    body: "Comfortable taking a feature from spec to production: design, build, test, deploy, and debug in live systems.",
-  },
-  {
-    title: "AI-Assisted Development",
-    body: "Fluent with ChatGPT, GitHub Copilot, and Claude for planning, debugging, and tests — always validating before production.",
-  },
-];
+import { skillGroups, focusAreas } from "@/data/profile";
 
 export default function Skills() {
   return (
@@ -52,7 +15,7 @@ export default function Skills() {
         </Reveal>
 
         <div className="mt-14 grid gap-5 sm:grid-cols-2 lg:grid-cols-4">
-          {groups.map((g, i) => (
+          {skillGroups.map((g, i) => (
             <Reveal key={g.title} delay={i * 0.07}>
               <div className="card card-hover h-full p-6">
                 <h3 className="font-display text-lg font-semibold tracking-tight text-chalk">

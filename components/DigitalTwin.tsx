@@ -2,8 +2,22 @@
 
 import { useEffect, useRef, useState } from "react";
 import { AnimatePresence, motion } from "framer-motion";
+import Markdown from "./Markdown";
 
 type Msg = { id: string; role: "user" | "assistant"; content: string };
+
+// Where the conversation is saved so it survives a page refresh.
+const STORAGE_KEY = "digital-twin-chat-v1";
+
+/** Defensive check so we never trust whatever happens to be in localStorage. */
+function isValidMsg(m: unknown): m is Msg {
+  return (
+    !!m &&
+    typeof (m as Msg).id === "string" &&
+    ((m as Msg).role === "user" || (m as Msg).role === "assistant") &&
+    typeof (m as Msg).content === "string"
+  );
+}
 
 const SUGGESTIONS = [
   "How did you get into software engineering?",
@@ -25,6 +39,8 @@ export default function DigitalTwin() {
   const [messages, setMessages] = useState<Msg[]>([]);
   const [input, setInput] = useState("");
   const [streaming, setStreaming] = useState(false);
+  // True once we've read localStorage, so we don't overwrite it before restoring.
+  const [hydrated, setHydrated] = useState(false);
   const scrollRef = useRef<HTMLDivElement>(null);
   const inputRef = useRef<HTMLInputElement>(null);
   // Lets us cancel the in-flight request (stop button / timeout).
@@ -36,6 +52,44 @@ export default function DigitalTwin() {
     stopReasonRef.current = "user";
     abortRef.current?.abort();
   }
+
+  function clearChat() {
+    stopReasonRef.current = "user";
+    abortRef.current?.abort();
+    setMessages([]);
+    try {
+      window.localStorage.removeItem(STORAGE_KEY);
+    } catch {
+      // Ignore: storage may be unavailable (private mode, etc.).
+    }
+  }
+
+  // Restore a saved conversation once, after mount (keeps SSR markup in sync
+  // so there's no hydration mismatch).
+  useEffect(() => {
+    try {
+      const raw = window.localStorage.getItem(STORAGE_KEY);
+      if (raw) {
+        const parsed: unknown = JSON.parse(raw);
+        if (Array.isArray(parsed)) setMessages(parsed.filter(isValidMsg));
+      }
+    } catch {
+      // Corrupt/unavailable storage — just start fresh.
+    }
+    setHydrated(true);
+  }, []);
+
+  // Persist after each completed turn. We skip while streaming so we only save
+  // settled messages (not a half-written reply) and never the empty placeholder.
+  useEffect(() => {
+    if (!hydrated || streaming) return;
+    try {
+      const settled = messages.filter((m) => m.content.trim().length > 0);
+      window.localStorage.setItem(STORAGE_KEY, JSON.stringify(settled));
+    } catch {
+      // Ignore write failures (quota, private mode, etc.).
+    }
+  }, [messages, hydrated, streaming]);
 
   useEffect(() => {
     scrollRef.current?.scrollTo({
@@ -203,6 +257,29 @@ export default function DigitalTwin() {
                   AI · ANSWERS ABOUT MY CAREER
                 </p>
               </div>
+              {messages.length > 0 && (
+                <button
+                  type="button"
+                  onClick={clearChat}
+                  aria-label="Clear conversation"
+                  title="Clear conversation"
+                  className="relative grid h-8 w-8 place-items-center rounded-full text-muted transition-colors hover:bg-white/10 hover:text-chalk"
+                >
+                  <svg
+                    width="16"
+                    height="16"
+                    viewBox="0 0 24 24"
+                    fill="none"
+                    stroke="currentColor"
+                    strokeWidth="2"
+                    strokeLinecap="round"
+                    strokeLinejoin="round"
+                    aria-hidden="true"
+                  >
+                    <path d="M3 6h18M8 6V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2m3 0v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6M10 11v6M14 11v6" />
+                  </svg>
+                </button>
+              )}
             </div>
 
             {/* Messages */}
@@ -239,13 +316,19 @@ export default function DigitalTwin() {
                   }`}
                 >
                   <div
-                    className={`max-w-[85%] whitespace-pre-wrap rounded-2xl px-4 py-3 text-sm leading-relaxed ${
+                    className={`max-w-[85%] rounded-2xl px-4 py-3 text-sm leading-relaxed ${
                       m.role === "user"
-                        ? "rounded-br-sm bg-electric-blue/20 text-chalk ring-1 ring-electric-blue/30"
+                        ? "whitespace-pre-wrap rounded-br-sm bg-electric-blue/20 text-chalk ring-1 ring-electric-blue/30"
                         : "rounded-tl-sm border border-white/[0.07] bg-ink-700/70 text-chalk/90"
                     }`}
                   >
-                    {m.content || (
+                    {m.content ? (
+                      m.role === "assistant" ? (
+                        <Markdown content={m.content} />
+                      ) : (
+                        m.content
+                      )
+                    ) : (
                       <span className="inline-flex gap-1 py-1">
                         <span className="h-1.5 w-1.5 animate-pulse-dot rounded-full bg-electric-cyan" />
                         <span className="h-1.5 w-1.5 animate-pulse-dot rounded-full bg-electric-cyan [animation-delay:0.2s]" />

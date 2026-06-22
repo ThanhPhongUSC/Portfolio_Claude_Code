@@ -1,5 +1,8 @@
 import type { NextRequest } from "next/server";
 import { buildSystemPrompt } from "@/data/profile";
+import { createRateLimiter, getClientId } from "@/lib/rateLimit";
+import { sanitizeMessages } from "@/lib/chatMessages";
+import { logChatEvent } from "@/lib/logger";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -10,41 +13,16 @@ const MODEL = "openai/gpt-oss-120b:free";
 // so the chatbot and the visible site stay in sync (single source of truth).
 const SYSTEM_PROMPT = buildSystemPrompt();
 
-/**
- * Simple in-memory, per-IP rate limiter.
- *
- * Allows up to RATE_LIMIT requests per WINDOW_MS per client. This protects the
- * OpenRouter key from abuse (cost / free-tier limits). Note: in-memory state is
- * per server instance and resets on restart — fine for a single-instance
- * portfolio. For multi-instance/serverless deployments, back this with a shared
- * store such as Upstash Redis instead.
- */
+// Per-visitor cap to protect the OpenRouter key from abuse (cost / free-tier
+// limits). See lib/rateLimit.ts for the single-instance caveat.
 const RATE_LIMIT = 10;
 const WINDOW_MS = 60_000; // 1 minute
-const hits = new Map<string, number[]>();
-
-function getClientId(req: NextRequest): string {
-  const forwarded = req.headers.get("x-forwarded-for");
-  if (forwarded) return forwarded.split(",")[0]!.trim();
-  return req.headers.get("x-real-ip") ?? "unknown";
-}
-
-/** Returns true if the request is allowed; false if the limit is exceeded. */
-function checkRateLimit(id: string): boolean {
-  const now = Date.now();
-  const recent = (hits.get(id) ?? []).filter((t) => now - t < WINDOW_MS);
-  if (recent.length >= RATE_LIMIT) {
-    hits.set(id, recent);
-    return false;
-  }
-  recent.push(now);
-  hits.set(id, recent);
-  return true;
-}
-
-type ChatMessage = { role: "user" | "assistant"; content: string };
+const limiter = createRateLimiter({ limit: RATE_LIMIT, windowMs: WINDOW_MS });
 
 export async function POST(req: NextRequest) {
+  const startedAt = Date.now();
+  const clientId = getClientId(req.headers);
+
   const apiKey = process.env.OPENROUTER_API_KEY;
   if (!apiKey) {
     return new Response("The chat is not configured (missing OPENROUTER_API_KEY).", {
@@ -52,7 +30,8 @@ export async function POST(req: NextRequest) {
     });
   }
 
-  if (!checkRateLimit(getClientId(req))) {
+  if (!limiter.check(clientId)) {
+    logChatEvent({ type: "rate_limited", clientId });
     return new Response(
       "You're sending messages a bit too fast. Please wait a moment and try again.",
       { status: 429, headers: { "Retry-After": "60" } }
@@ -63,26 +42,24 @@ export async function POST(req: NextRequest) {
   try {
     body = await req.json();
   } catch {
+    logChatEvent({ type: "bad_request", reason: "invalid JSON body" });
     return new Response("Invalid request body.", { status: 400 });
   }
 
-  const rawMessages = (body as { messages?: unknown })?.messages;
-  const messages: ChatMessage[] = Array.isArray(rawMessages)
-    ? (rawMessages as ChatMessage[])
-        .filter(
-          (m) =>
-            m &&
-            (m.role === "user" || m.role === "assistant") &&
-            typeof m.content === "string" &&
-            m.content.trim().length > 0
-        )
-        .slice(-12)
-        .map((m) => ({ role: m.role, content: m.content.slice(0, 4000) }))
-    : [];
+  const messages = sanitizeMessages((body as { messages?: unknown })?.messages);
 
   if (messages.length === 0) {
+    logChatEvent({ type: "bad_request", reason: "no valid messages" });
     return new Response("No messages provided.", { status: 400 });
   }
+
+  // Analytics: record what was asked (truncated, privacy-conscious).
+  logChatEvent({
+    type: "request",
+    clientId,
+    messageCount: messages.length,
+    question: messages[messages.length - 1]!.content,
+  });
 
   let upstream: Response;
   try {
@@ -102,7 +79,7 @@ export async function POST(req: NextRequest) {
       }),
     });
   } catch (err) {
-    console.error("[chat] fetch to OpenRouter failed:", err);
+    logChatEvent({ type: "upstream_unreachable", error: String(err) });
     return new Response("Could not reach the AI service. Please try again.", {
       status: 502,
     });
@@ -110,6 +87,7 @@ export async function POST(req: NextRequest) {
 
   if (!upstream.ok || !upstream.body) {
     const detail = await upstream.text().catch(() => "");
+    logChatEvent({ type: "upstream_error", status: upstream.status });
     return new Response(
       `The AI service returned an error (${upstream.status}). ${detail.slice(0, 300)}`,
       { status: 502 }
@@ -137,6 +115,11 @@ export async function POST(req: NextRequest) {
             const data = trimmed.slice(5).trim();
             if (data === "[DONE]") {
               controller.close();
+              logChatEvent({
+                type: "completed",
+                clientId,
+                durationMs: Date.now() - startedAt,
+              });
               return;
             }
             try {
@@ -149,6 +132,11 @@ export async function POST(req: NextRequest) {
           }
         }
         controller.close();
+        logChatEvent({
+          type: "completed",
+          clientId,
+          durationMs: Date.now() - startedAt,
+        });
       } catch (err) {
         controller.error(err);
       } finally {

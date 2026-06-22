@@ -81,10 +81,31 @@ export const milestones: Milestone[] = [
 /** Public contact details (safe to expose; used by the AI's fallback advice). */
 export const contact = {
   email: "thanhphongus@gmail.com",
+  /** Bare handle for prose (the AI mentions this); `linkedinUrl` is the link. */
   linkedin: "linkedin.com/in/phongtrinh",
+  linkedinUrl: "https://www.linkedin.com/in/phongtrinh/",
   github: "github.com/ThanhPhongUSC",
+  githubUrl: "https://github.com/ThanhPhongUSC",
   location: "Denver Metropolitan Area",
+  /** Small line under the contact buttons. */
+  tagline: "DENVER METROPOLITAN AREA · REMOTE-READY",
 };
+
+/**
+ * The contact buttons rendered in the Contact section, in order. Each one is a
+ * link with a short label; `kind` lets the UI pick the right icon.
+ */
+export type ContactLink = {
+  kind: "email" | "linkedin" | "github";
+  href: string;
+  label: string;
+};
+
+export const contactLinks: ContactLink[] = [
+  { kind: "email", href: `mailto:${contact.email}`, label: contact.email },
+  { kind: "linkedin", href: contact.linkedinUrl, label: contact.linkedin },
+  { kind: "github", href: contact.githubUrl, label: contact.github },
+];
 
 /** Skill groups (authored copy that complements the timeline). */
 export const skillSummary = [
@@ -100,6 +121,51 @@ export const projectSummary = [
   "Traveler's Pocket — full-stack travel app aggregating translations, attractions, and dining via external APIs cached in PostgreSQL (React, Express, Node).",
   "What's for Dinner? — generates recipes from your food inventory using the Edamam API (React, AWS EC2, TravisCI).",
   "High-throughput RESTful API — stress-tested to 1,000 RPS; optimized read queries from 2s to 4ms; ETL over 10M+ records (Node, Docker, k6, AWS EC2).",
+];
+
+/** A column in the Expertise grid: a theme plus the concrete tools under it. */
+export type SkillGroup = { title: string; blurb: string; skills: string[] };
+
+/** Skill groups shown as cards in the Expertise section. */
+export const skillGroups: SkillGroup[] = [
+  {
+    title: "Frontend",
+    blurb: "Interfaces people actually enjoy using.",
+    skills: ["React", "TypeScript", "JavaScript", "HTML / CSS", "Responsive UI"],
+  },
+  {
+    title: "Backend",
+    blurb: "Reliable services and clean APIs.",
+    skills: ["Node.js", "Express", "Prisma", "REST APIs", "Auth0"],
+  },
+  {
+    title: "Data",
+    blurb: "From relational to document stores.",
+    skills: ["PostgreSQL", "MySQL", "MongoDB", "Schema design", "Query tuning"],
+  },
+  {
+    title: "Infra & Quality",
+    blurb: "Ship it, test it, keep it up.",
+    skills: ["AWS", "Docker", "CI/CD", "Jest", "Cypress", "Git"],
+  },
+];
+
+/** A highlighted strength: the three cards below the skill grid. */
+export type FocusArea = { title: string; body: string };
+
+export const focusAreas: FocusArea[] = [
+  {
+    title: "Authentication & Security",
+    body: "MFA, password rotation, and Auth0-based flows across multi-tenant SaaS — built for compliance and scale.",
+  },
+  {
+    title: "End-to-End Ownership",
+    body: "Comfortable taking a feature from spec to production: design, build, test, deploy, and debug in live systems.",
+  },
+  {
+    title: "AI-Assisted Development",
+    body: "Fluent with ChatGPT, GitHub Copilot, and Claude for planning, debugging, and tests — always validating before production.",
+  },
 ];
 
 /**
